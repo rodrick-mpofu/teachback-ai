@@ -8,6 +8,7 @@ import os
 from dotenv import load_dotenv
 from typing import Optional, Dict, List, Tuple
 from src.utils.claude_client import generate_ai_student_response, analyze_explanation_with_claude
+from src.utils.elevenlabs_client import text_to_speech_file
 
 # Load environment variables
 load_dotenv()
@@ -90,11 +91,24 @@ def submit_explanation(explanation: str, state: Dict) -> Tuple[str, Optional[str
     # Analyze explanation
     state = analyze_user_explanation(explanation, state)
 
+    # Generate voice response if enabled
+    audio_path = None
+    if state["voice_enabled"]:
+        try:
+            audio_path = text_to_speech_file(
+                text=student_response,
+                mode=state["mode"],
+                output_filename=f"response_{state['turn_count']}.mp3"
+            )
+        except Exception as e:
+            print(f"Voice generation error: {e}")
+            # Continue without voice if error occurs
+
     # Check if session should end
     if state["turn_count"] >= state["max_turns"]:
         student_response += f"\n\n---\n**Session complete!** You've completed {state['turn_count']} turns. Great teaching!"
 
-    return student_response, None, get_analysis_panel(state), state["confidence_score"], state["clarity_score"], "", state
+    return student_response, audio_path, get_analysis_panel(state), state["confidence_score"], state["clarity_score"], "", state
 
 
 def generate_student_response_fallback(explanation: str, mode: str) -> str:
@@ -292,9 +306,10 @@ Student
                 mode_description = gr.Markdown(STUDENT_MODES["🤔 Socratic Student"])
 
                 voice_checkbox = gr.Checkbox(
-                    label="🎤 Enable Voice Mode (Coming Soon)",
+                    label="🎤 Enable Voice Mode",
                     value=False,
-                    interactive=False
+                    interactive=True,
+                    info="AI student will speak responses with personality-matched voices"
                 )
 
                 start_button = gr.Button("🚀 Start Teaching Session", variant="primary", size="lg")
@@ -320,7 +335,8 @@ Student
 
                         audio_output = gr.Audio(
                             label="🔊 Student Voice Response",
-                            visible=False
+                            visible=True,
+                            autoplay=True
                         )
 
                 # Analysis Panel
