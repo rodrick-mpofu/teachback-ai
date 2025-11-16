@@ -19,34 +19,31 @@ STUDENT_MODES = {
     "😰 Anxious Student": "Worries about edge cases and failure scenarios. Asks 'what if...?' constantly."
 }
 
-# Session state
-session_state = {
-    "topic": None,
-    "mode": None,
-    "voice_enabled": False,
-    "turn_count": 0,
-    "max_turns": 10,
-    "conversation_history": [],
-    "knowledge_gaps": [],
-    "confidence_score": 0,
-    "clarity_score": 0
-}
+def create_initial_state():
+    """Create initial session state"""
+    return {
+        "topic": None,
+        "mode": None,
+        "voice_enabled": False,
+        "turn_count": 0,
+        "max_turns": 10,
+        "conversation_history": [],
+        "knowledge_gaps": [],
+        "confidence_score": 0,
+        "clarity_score": 0
+    }
 
 
-def start_teaching_session(topic: str, mode: str, voice_enabled: bool) -> Tuple[str, str, str]:
+def start_teaching_session(topic: str, mode: str, voice_enabled: bool, state: Dict) -> Tuple[str, str, str, int, int, Dict]:
     """Initialize a new teaching session"""
     if not topic or not topic.strip():
-        return "⚠️ Please enter a topic to teach!", "", get_analysis_panel()
+        return "⚠️ Please enter a topic to teach!", "", get_analysis_panel(state), 0, 0, state
 
     # Reset session state
-    session_state["topic"] = topic
-    session_state["mode"] = mode
-    session_state["voice_enabled"] = voice_enabled
-    session_state["turn_count"] = 0
-    session_state["conversation_history"] = []
-    session_state["knowledge_gaps"] = []
-    session_state["confidence_score"] = 0
-    session_state["clarity_score"] = 0
+    state = create_initial_state()
+    state["topic"] = topic
+    state["mode"] = mode
+    state["voice_enabled"] = voice_enabled
 
     # Generate initial question based on mode
     initial_questions = {
@@ -57,41 +54,41 @@ def start_teaching_session(topic: str, mode: str, voice_enabled: bool) -> Tuple[
     }
 
     initial_question = initial_questions.get(mode, f"Tell me about {topic}. What is it?")
-    session_state["conversation_history"].append({"role": "student", "content": initial_question})
+    state["conversation_history"].append({"role": "student", "content": initial_question})
 
     status_msg = f"✅ Session started! Teaching: **{topic}** | Mode: **{mode}**"
 
-    return status_msg, initial_question, get_analysis_panel()
+    return status_msg, initial_question, get_analysis_panel(state), 0, 0, state
 
 
-def submit_explanation(explanation: str) -> Tuple[str, Optional[str], str, str]:
+def submit_explanation(explanation: str, state: Dict) -> Tuple[str, Optional[str], str, int, int, str, Dict]:
     """Process user's explanation and generate AI student response"""
     if not explanation or not explanation.strip():
-        return "⚠️ Please provide an explanation!", None, get_analysis_panel(), explanation
+        return "⚠️ Please provide an explanation!", None, get_analysis_panel(state), state["confidence_score"], state["clarity_score"], explanation, state
 
-    if not session_state["topic"]:
-        return "⚠️ Please start a teaching session first!", None, get_analysis_panel(), explanation
+    if not state["topic"]:
+        return "⚠️ Please start a teaching session first!", None, get_analysis_panel(state), 0, 0, explanation, state
 
     # Increment turn count
-    session_state["turn_count"] += 1
+    state["turn_count"] += 1
 
     # Add user explanation to history
-    session_state["conversation_history"].append({"role": "teacher", "content": explanation})
+    state["conversation_history"].append({"role": "teacher", "content": explanation})
 
     # Generate student response
-    student_response = generate_student_response(explanation, session_state["mode"])
+    student_response = generate_student_response(explanation, state["mode"])
 
     # Add student response to history
-    session_state["conversation_history"].append({"role": "student", "content": student_response})
+    state["conversation_history"].append({"role": "student", "content": student_response})
 
     # Analyze explanation
-    analyze_user_explanation(explanation)
+    state = analyze_user_explanation(explanation, state)
 
     # Check if session should end
-    if session_state["turn_count"] >= session_state["max_turns"]:
-        student_response += f"\n\n---\n**Session complete!** You've completed {session_state['turn_count']} turns. Great teaching!"
+    if state["turn_count"] >= state["max_turns"]:
+        student_response += f"\n\n---\n**Session complete!** You've completed {state['turn_count']} turns. Great teaching!"
 
-    return student_response, None, get_analysis_panel(), ""
+    return student_response, None, get_analysis_panel(state), state["confidence_score"], state["clarity_score"], "", state
 
 
 def generate_student_response(explanation: str, mode: str) -> str:
@@ -105,48 +102,42 @@ def generate_student_response(explanation: str, mode: str) -> str:
     return responses.get(mode, "Can you explain that in more detail?")
 
 
-def analyze_user_explanation(explanation: str):
+def analyze_user_explanation(explanation: str, state: Dict) -> Dict:
     """Analyze user's explanation for confidence, clarity, and knowledge gaps"""
     import random
 
     # Placeholder analysis
-    session_state["confidence_score"] = min(100, session_state["confidence_score"] + random.randint(5, 15))
-    session_state["clarity_score"] = min(100, session_state["clarity_score"] + random.randint(5, 15))
+    state["confidence_score"] = min(100, state["confidence_score"] + random.randint(5, 15))
+    state["clarity_score"] = min(100, state["clarity_score"] + random.randint(5, 15))
 
     # Detect hedging language
     hedging_words = ["i think", "maybe", "probably", "kind of", "sort of", "i guess"]
     if any(word in explanation.lower() for word in hedging_words):
-        session_state["confidence_score"] = max(0, session_state["confidence_score"] - 10)
+        state["confidence_score"] = max(0, state["confidence_score"] - 10)
 
     # Placeholder knowledge gaps
-    if session_state["turn_count"] == 2:
-        session_state["knowledge_gaps"].append("Base case not explained")
-    elif session_state["turn_count"] == 3:
-        session_state["knowledge_gaps"].append("Stack overflow mention")
+    if state["turn_count"] == 2:
+        state["knowledge_gaps"].append("Base case not explained")
+    elif state["turn_count"] == 3:
+        state["knowledge_gaps"].append("Stack overflow mention")
+
+    return state
 
 
-def get_analysis_panel() -> str:
+def get_analysis_panel(state: Dict) -> str:
     """Generate the analysis panel as markdown"""
-    confidence = session_state["confidence_score"]
-    clarity = session_state["clarity_score"]
-    gaps = session_state["knowledge_gaps"]
-    turn = session_state["turn_count"]
-    max_turn = session_state["max_turns"]
-
-    # Create progress bars
-    confidence_bar = create_progress_bar(confidence)
-    clarity_bar = create_progress_bar(clarity)
+    gaps = state.get("knowledge_gaps", [])
+    turn = state.get("turn_count", 0)
+    max_turn = state.get("max_turns", 10)
 
     # Format knowledge gaps
     gaps_text = "\n".join([f"• {gap}" for gap in gaps]) if gaps else "None detected yet"
 
-    analysis_md = f"""### 📊 Your Progress
-
-**Confidence:** {confidence_bar} {confidence}%
-**Clarity:** {clarity_bar} {clarity}%
-
+    analysis_md = f"""
 ### 🎯 Knowledge Gaps Found:
 {gaps_text}
+
+---
 
 **Turn:** {turn}/{max_turn}
 """
@@ -196,10 +187,8 @@ custom_css = """
     text-align: center;
 }
 
-/* Analysis panel - more specific targeting */
-.analysis-panel,
-.analysis-panel > div,
-.analysis-panel .prose {
+/* Analysis panel - target the column itself */
+.analysis-panel {
     background: linear-gradient(135deg, #fff9e6 0%, #fff4d4 100%) !important;
     border: 3px solid #ffd700 !important;
     border-radius: 12px !important;
@@ -207,16 +196,25 @@ custom_css = """
     box-shadow: 0 4px 12px rgba(255, 215, 0, 0.3) !important;
 }
 
+/* All children should have transparent backgrounds */
+.analysis-panel > *,
+.analysis-panel .block,
+.analysis-panel .form {
+    background: transparent !important;
+    border: none !important;
+}
+
+/* Text color */
 .analysis-panel h3,
 .analysis-panel p,
-.analysis-panel strong {
+.analysis-panel strong,
+.analysis-panel label {
     color: #1a1a2e !important;
 }
 
-/* Make sure markdown doesn't override */
-.analysis-panel .prose {
+/* Slider styling within analysis panel */
+.analysis-panel input[type="range"] {
     background: transparent !important;
-    border: none !important;
 }
 """
 
@@ -304,10 +302,29 @@ Student
                         )
 
                 # Analysis Panel
-                with gr.Column(scale=1):
+                with gr.Column(scale=1, elem_classes="analysis-panel"):
+                    gr.Markdown("### 📊 Your Progress")
+
+                    confidence_slider = gr.Slider(
+                        minimum=0,
+                        maximum=100,
+                        value=0,
+                        label="Confidence Score",
+                        interactive=False,
+                        info="Based on certainty of explanations"
+                    )
+
+                    clarity_slider = gr.Slider(
+                        minimum=0,
+                        maximum=100,
+                        value=0,
+                        label="Clarity Score",
+                        interactive=False,
+                        info="Based on structure and simplicity"
+                    )
+
                     analysis_output = gr.Markdown(
-                        get_analysis_panel(),
-                        elem_classes="analysis-panel"
+                        get_analysis_panel(create_initial_state())
                     )
 
     # Footer
@@ -319,6 +336,9 @@ Powered by Anthropic Claude, Gradio, MCP & ElevenLabs
 [LinkedIn](https://www.linkedin.com/in/rodrick-mpofu/) | [GitHub](https://github.com/rodrick-mpofu)
     """)
 
+    # Session State - using gr.State()
+    session_state_component = gr.State(create_initial_state())
+
     # Event Handlers
     mode_dropdown.change(
         fn=lambda mode: STUDENT_MODES.get(mode, ""),
@@ -328,20 +348,20 @@ Powered by Anthropic Claude, Gradio, MCP & ElevenLabs
 
     start_button.click(
         fn=start_teaching_session,
-        inputs=[topic_input, mode_dropdown, voice_checkbox],
-        outputs=[session_status, student_response_output, analysis_output]
+        inputs=[topic_input, mode_dropdown, voice_checkbox, session_state_component],
+        outputs=[session_status, student_response_output, analysis_output, confidence_slider, clarity_slider, session_state_component]
     )
 
     submit_button.click(
         fn=submit_explanation,
-        inputs=[explanation_input],
-        outputs=[student_response_output, audio_output, analysis_output, explanation_input]
+        inputs=[explanation_input, session_state_component],
+        outputs=[student_response_output, audio_output, analysis_output, confidence_slider, clarity_slider, explanation_input, session_state_component]
     )
 
     explanation_input.submit(
         fn=submit_explanation,
-        inputs=[explanation_input],
-        outputs=[student_response_output, audio_output, analysis_output, explanation_input]
+        inputs=[explanation_input, session_state_component],
+        outputs=[student_response_output, audio_output, analysis_output, confidence_slider, clarity_slider, explanation_input, session_state_component]
     )
 
 
