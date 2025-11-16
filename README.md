@@ -80,10 +80,15 @@ Get instant feedback on your teaching:
 - **Knowledge Gap Detection** - Identifies concepts you avoided or explained poorly
 - **Jargon Spotter** - Catches technical terms you didn't explain
 
-### 🎤 **Voice Mode** *(Coming Soon)*
-- Speak your explanations naturally
-- Hear AI student responses with personality-matched voices
-- Practice for real presentations and interviews
+### 🎤 **Voice Mode** ✅
+- Enable voice responses with a single checkbox
+- Hear AI student responses with personality-matched voices powered by ElevenLabs
+- Each personality has a distinct voice character:
+  - Socratic: Thoughtful, patient voice
+  - Contrarian: Confident, challenging voice
+  - Five-Year-Old: Young, curious voice
+  - Anxious: Nervous, worried voice
+- Practice for real presentations and interviews with audio feedback
 
 ### 📊 **Progress Tracking**
 - Session analytics and improvement metrics
@@ -190,54 +195,85 @@ python app.py
 Create a `.env` file with:
 ```
 ANTHROPIC_API_KEY=your_anthropic_key
-ELEVENLABS_API_KEY=your_elevenlabs_key
-OPENAI_API_KEY=your_openai_key
+ELEVENLABS_API_KEY=your_elevenlabs_key  # Optional - for voice mode
 ```
+
+**For Hugging Face Spaces deployment:**
+- Add API keys in Space Settings → Repository secrets
+- `ANTHROPIC_API_KEY` is required for AI functionality
+- `ELEVENLABS_API_KEY` is optional (app works without voice if not provided)
 
 ---
 
 ## 📁 Project Structure
 ```
 teachback-ai/
-├── app.py                 # Main Gradio application
+├── app.py                          # Main Gradio application
 ├── src/
-│   ├── agents/           # Teaching agent logic
-│   │   └── teaching_agent.py
-│   ├── mcp/              # MCP server implementation
-│   │   └── teaching_mcp.py
-│   ├── ui/               # UI components
-│   │   └── gradio_interface.py
-│   └── utils/            # Utility functions
-│       └── analysis.py
-├── requirements.txt      # Python dependencies
-├── .env.example         # Environment template
-└── README.md            # This file
+│   └── utils/                      # Utility functions
+│       ├── claude_client.py        # Claude API integration
+│       ├── elevenlabs_client.py    # ElevenLabs voice integration
+│       └── __init__.py
+├── requirements.txt                # Python dependencies
+├── .env.example                    # Environment template
+├── .gitignore                      # Git ignore file
+├── check_models.py                 # Utility to test available Claude models
+└── README.md                       # This file
 ```
+
+**Key Files:**
+- `app.py` - Complete Gradio UI with all components and event handlers
+- `src/utils/claude_client.py` - AI student personality prompts and Claude API calls
+- `src/utils/elevenlabs_client.py` - Voice generation with personality-matched voices
+- `requirements.txt` - All Python dependencies for deployment
 
 ---
 
-## 🎯 Roadmap
+## 🎯 Development Status
 
-### ✅ **Phase 1: MVP** (Current)
-- [ ] Basic Gradio UI
-- [ ] Text-based teaching interface
-- [ ] Multiple AI student personalities
-- [ ] Real-time analysis feedback
-- [ ] MCP server integration
-- [ ] Anthropic Claude integration
+### ✅ **Phase 1: MVP** (COMPLETED)
+- [x] Beautiful Gradio UI with sidebar layout
+- [x] Text-based teaching interface
+- [x] Multiple AI student personalities (4 unique modes)
+- [x] Real-time analysis feedback (confidence & clarity scores)
+- [x] Anthropic Claude 3 Opus integration
+- [x] Knowledge gap detection with AI analysis
+- [x] Session state management for multi-user support
 
-### 🚧 **Phase 2: Voice & Polish**
-- [ ] Voice input (speak explanations)
-- [ ] Voice output (AI student speaks)
-- [ ] Personality-matched voices
-- [ ] Session persistence
+### ✅ **Phase 2: Voice Integration** (COMPLETED)
+- [x] Voice output with ElevenLabs integration
+- [x] Personality-matched voices for each AI student
+- [x] One-click voice mode toggle
+- [x] Autoplay audio responses
+- [ ] Voice input (speak explanations) - Future enhancement
 
-### 🔮 **Phase 3: Advanced Features**
+### 🔮 **Phase 3: Advanced Features** (Future)
+- [ ] Session persistence and history
 - [ ] Progress tracking across sessions
 - [ ] Knowledge graph visualization
 - [ ] Spaced repetition system
 - [ ] Multi-user leaderboards
 - [ ] Export to flashcards (Anki)
+- [ ] MCP server for tool orchestration
+
+---
+
+## 🚀 Deploying to Hugging Face Spaces
+
+### Quick Deploy
+1. Create a new Space on [Hugging Face](https://huggingface.co/spaces)
+2. Choose **Gradio** as the SDK
+3. Connect your GitHub repository or upload files
+4. Add secrets in Space Settings → Repository secrets:
+   - `ANTHROPIC_API_KEY` (required)
+   - `ELEVENLABS_API_KEY` (optional for voice)
+5. The app will auto-deploy using `app.py` and `requirements.txt`
+
+### Important Notes
+- **Model**: Uses `claude-3-opus-20240229` - ensure your API key has access
+- **Port**: Configured for port 7860 (Gradio default)
+- **Voice**: Works without ElevenLabs key, just disables voice mode
+- **State Management**: Uses `gr.State()` for proper multi-user support
 
 ---
 
