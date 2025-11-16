@@ -7,6 +7,7 @@ import gradio as gr
 import os
 from dotenv import load_dotenv
 from typing import Optional, Dict, List, Tuple
+from src.utils.claude_client import generate_ai_student_response, analyze_explanation_with_claude
 
 # Load environment variables
 load_dotenv()
@@ -75,8 +76,13 @@ def submit_explanation(explanation: str, state: Dict) -> Tuple[str, Optional[str
     # Add user explanation to history
     state["conversation_history"].append({"role": "teacher", "content": explanation})
 
-    # Generate student response
-    student_response = generate_student_response(explanation, state["mode"])
+    # Generate student response using Claude API
+    student_response = generate_ai_student_response(
+        topic=state["topic"],
+        mode=state["mode"],
+        conversation_history=state["conversation_history"],
+        turn_count=state["turn_count"]
+    )
 
     # Add student response to history
     state["conversation_history"].append({"role": "student", "content": student_response})
@@ -91,8 +97,8 @@ def submit_explanation(explanation: str, state: Dict) -> Tuple[str, Optional[str
     return student_response, None, get_analysis_panel(state), state["confidence_score"], state["clarity_score"], "", state
 
 
-def generate_student_response(explanation: str, mode: str) -> str:
-    """Generate AI student's response based on mode"""
+def generate_student_response_fallback(explanation: str, mode: str) -> str:
+    """Fallback student response if Claude API fails"""
     responses = {
         "🤔 Socratic Student": "That's interesting. But why does that work? Can you break down the underlying principle?",
         "😈 Contrarian Student": "I disagree. What about the cases where that doesn't work? Give me a counterexample.",
@@ -103,25 +109,41 @@ def generate_student_response(explanation: str, mode: str) -> str:
 
 
 def analyze_user_explanation(explanation: str, state: Dict) -> Dict:
-    """Analyze user's explanation for confidence, clarity, and knowledge gaps"""
-    import random
+    """Analyze user's explanation using Claude API for confidence, clarity, and knowledge gaps"""
+    try:
+        # Use Claude API for real analysis
+        analysis = analyze_explanation_with_claude(
+            topic=state["topic"],
+            explanation=explanation,
+            conversation_history=state["conversation_history"]
+        )
 
-    # Placeholder analysis
-    state["confidence_score"] = min(100, state["confidence_score"] + random.randint(5, 15))
-    state["clarity_score"] = min(100, state["clarity_score"] + random.randint(5, 15))
+        # Update state with Claude's analysis
+        state["confidence_score"] = analysis["confidence_score"]
+        state["clarity_score"] = analysis["clarity_score"]
 
-    # Detect hedging language
-    hedging_words = ["i think", "maybe", "probably", "kind of", "sort of", "i guess"]
-    if any(word in explanation.lower() for word in hedging_words):
-        state["confidence_score"] = max(0, state["confidence_score"] - 10)
+        # Add new knowledge gaps (avoid duplicates)
+        for gap in analysis["knowledge_gaps"]:
+            if gap not in state["knowledge_gaps"]:
+                state["knowledge_gaps"].append(gap)
 
-    # Placeholder knowledge gaps
-    if state["turn_count"] == 2:
-        state["knowledge_gaps"].append("Base case not explained")
-    elif state["turn_count"] == 3:
-        state["knowledge_gaps"].append("Stack overflow mention")
+        return state
 
-    return state
+    except Exception as e:
+        # Fallback to simple analysis if Claude API fails
+        print(f"Analysis error: {e}")
+        import random
+
+        # Simple score updates
+        state["confidence_score"] = min(100, state["confidence_score"] + random.randint(5, 15))
+        state["clarity_score"] = min(100, state["clarity_score"] + random.randint(5, 15))
+
+        # Detect hedging language
+        hedging_words = ["i think", "maybe", "probably", "kind of", "sort of", "i guess"]
+        if any(word in explanation.lower() for word in hedging_words):
+            state["confidence_score"] = max(0, state["confidence_score"] - 10)
+
+        return state
 
 
 def get_analysis_panel(state: Dict) -> str:
