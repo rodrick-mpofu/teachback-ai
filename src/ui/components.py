@@ -204,12 +204,17 @@ CUSTOM_CSS = """
     border: none !important;
 }
 
-/* Text color */
+/* Text color - ensure all text is dark/black */
+.analysis-panel,
+.analysis-panel *,
 .analysis-panel h3,
 .analysis-panel p,
 .analysis-panel strong,
-.analysis-panel label {
-    color: #0a0051 !important;
+.analysis-panel label,
+.analysis-panel .label,
+.analysis-panel span,
+.analysis-panel div {
+    color: #000000 !important;
 }
 
 /* Slider styling within analysis panel */
