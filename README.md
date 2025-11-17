@@ -24,6 +24,7 @@ license: mit
 
 [![Hackathon](https://img.shields.io/badge/MCP%20Hackathon-2025-blue)](https://huggingface.co/MCP-1st-Birthday)
 [![Track](https://img.shields.io/badge/Track-MCP%20in%20Action%20Consumer-purple)](https://huggingface.co/MCP-1st-Birthday)
+[![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-green?logo=anthropic)](https://modelcontextprotocol.io)
 [![Gradio](https://img.shields.io/badge/Gradio-5.49.1-orange)](https://gradio.app)
 
 ---
@@ -43,6 +44,97 @@ Perfect for:
 - 💼 Job seekers practicing technical interviews
 - 🎓 Self-learners mastering new topics
 - 👨‍🏫 Educators testing their own understanding
+
+---
+
+## 🔌 MCP Integration - Use TeachBack as a Tool!
+
+**TeachBack AI is fully MCP-compatible!** It provides a complete MCP server that exposes teaching sessions as tools you can use in Claude Desktop, Cursor IDE, or any MCP-compatible client.
+
+### **Available MCP Tools**
+
+```
+📦 TeachBack AI MCP Server
+├── 🎯 create_teaching_session
+│   Create a new teaching session with AI student personality
+│   Input: user_id, topic, mode (socratic|contrarian|five-year-old|anxious)
+│   Output: session_id, welcome_message
+│
+├── 🔍 analyze_explanation
+│   Analyze teaching quality and detect knowledge gaps
+│   Input: session_id, explanation
+│   Output: confidence_score, clarity_score, knowledge_gaps, unexplained_jargon, strengths
+│
+├── 💬 generate_question
+│   Get next question from AI student based on analysis
+│   Input: session_id, explanation, analysis, mode
+│   Output: question (personality-tailored)
+│
+└── 📊 get_session_summary
+    Get comprehensive session analytics
+    Input: session_id
+    Output: topic, mode, turns, avg_confidence, avg_clarity, persistent_gaps, history
+```
+
+### **Use Cases**
+
+- 🖥️ **Claude Desktop**: Add TeachBack tools to your Claude conversations
+- 💻 **Cursor IDE**: Practice explaining code concepts while you write
+- 🤖 **Custom Agents**: Integrate teaching sessions into your workflows
+- 📚 **Learning Apps**: Build on top of TeachBack's MCP API
+
+### **Quick MCP Setup**
+
+#### For Gradio App (Automatic)
+```bash
+python app.py  # MCP client starts automatically!
+```
+
+#### For Claude Desktop
+```json
+{
+  "mcpServers": {
+    "teachback-ai": {
+      "command": "python",
+      "args": ["path/to/teachback-ai/mcp_server.py"],
+      "env": {
+        "ANTHROPIC_API_KEY": "your_api_key"
+      }
+    }
+  }
+}
+```
+
+📖 **[Full MCP Setup Guide](MCP_SETUP.md)** - Detailed instructions for all platforms
+
+### **MCP Architecture**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  MCP Clients (Claude Desktop, Cursor, Gradio App)      │
+└────────────────────┬────────────────────────────────────┘
+                     │ stdio protocol
+┌────────────────────▼────────────────────────────────────┐
+│  TeachBack MCP Server (mcp_server.py)                   │
+│  ├── create_teaching_session                            │
+│  ├── analyze_explanation                                │
+│  ├── generate_question                                  │
+│  └── get_session_summary                                │
+└────────────────────┬────────────────────────────────────┘
+                     │ Python API
+┌────────────────────▼────────────────────────────────────┐
+│  TeachingAgent (teaching_agent.py)                      │
+│  • Session management                                   │
+│  • Conversation history                                 │
+│  • Progress tracking                                    │
+└────────────────────┬────────────────────────────────────┘
+                     │ API calls
+┌────────────────────▼────────────────────────────────────┐
+│  Claude API (claude-3-opus-20240229)                    │
+│  • Analyzes explanations                                │
+│  • Generates personality-based questions                │
+└─────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -130,19 +222,26 @@ Check your confidence scores, clarity ratings, and knowledge gaps.
 
 ## 🏗️ Tech Stack
 
-### **AI & Agents**
-- **🧠 Anthropic Claude** (via MCP) - Powers the teaching agent logic
-- **🎤 ElevenLabs** - Natural voice synthesis for AI student personalities
-- **🔧 Model Context Protocol (MCP)** - Agent tool orchestration
-- **⚡ Blaxel** - Agent runtime and parallel task execution
+### **Model Context Protocol (MCP)**
+- **🔧 MCP Server** - Exposes 4 teaching tools via stdio protocol
+- **🔌 MCP Client Wrapper** - Synchronous interface for Gradio integration
+- **📡 stdio Transport** - Standard MCP communication layer
+- **🎯 TeachingAgent** - Core session management and state tracking
 
-### **Frontend**
-- **🎨 Gradio 5** - Interactive web interface
+### **AI & LLM**
+- **🧠 Anthropic Claude 3 Opus** - Powers analysis and question generation
+- **🎤 ElevenLabs** - Natural voice synthesis for AI student personalities
+- **🤖 Personality System** - 4 distinct AI student modes with custom prompts
+
+### **Frontend & UI**
+- **🎨 Gradio 5.49.1** - Interactive web interface
 - **📊 Real-time Analytics** - Live feedback visualization
+- **🎭 Dynamic UI** - Session state management with gr.State()
 
 ### **Infrastructure**
-- **☁️ Modal** - Background processing and compute
 - **🤗 Hugging Face Spaces** - Deployment platform
+- **🐍 Python 3.9+** - Runtime environment
+- **⚡ Async/Await** - Non-blocking MCP communication
 
 ---
 
@@ -208,24 +307,35 @@ ELEVENLABS_API_KEY=your_elevenlabs_key  # Optional - for voice mode
 ## 📁 Project Structure
 ```
 teachback-ai/
-├── app.py                          # Main Gradio application
+├── app.py                          # Main Gradio application (MCP-powered)
+├── mcp_server.py                   # MCP server exposing teaching tools
+├── mcp_config.json                 # MCP server configuration & metadata
+├── MCP_SETUP.md                    # Comprehensive MCP setup guide
 ├── src/
-│   └── utils/                      # Utility functions
-│       ├── claude_client.py        # Claude API integration
+│   ├── agents/
+│   │   ├── teaching_agent.py       # Core TeachingAgent class
+│   │   └── __init__.py
+│   ├── mcp/
+│   │   ├── client_wrapper.py       # MCP client wrapper (sync interface)
+│   │   └── __init__.py
+│   └── utils/
+│       ├── claude_client.py        # Legacy Claude API integration
 │       ├── elevenlabs_client.py    # ElevenLabs voice integration
 │       └── __init__.py
-├── requirements.txt                # Python dependencies
+├── requirements.txt                # Python dependencies (includes MCP SDK)
 ├── .env.example                    # Environment template
 ├── .gitignore                      # Git ignore file
-├── check_models.py                 # Utility to test available Claude models
 └── README.md                       # This file
 ```
 
 **Key Files:**
-- `app.py` - Complete Gradio UI with all components and event handlers
-- `src/utils/claude_client.py` - AI student personality prompts and Claude API calls
+- `app.py` - Gradio UI with automatic MCP client initialization
+- `mcp_server.py` - MCP server with 4 teaching tools (stdio protocol)
+- `src/agents/teaching_agent.py` - Session management and Claude API integration
+- `src/mcp/client_wrapper.py` - Sync wrapper for MCP client (Gradio-compatible)
 - `src/utils/elevenlabs_client.py` - Voice generation with personality-matched voices
-- `requirements.txt` - All Python dependencies for deployment
+- `MCP_SETUP.md` - Complete setup guide for Claude Desktop, Cursor, etc.
+- `mcp_config.json` - Full tool schemas and server metadata
 
 ---
 
@@ -247,14 +357,25 @@ teachback-ai/
 - [x] Autoplay audio responses
 - [ ] Voice input (speak explanations) - Future enhancement
 
-### 🔮 **Phase 3: Advanced Features** (Future)
-- [ ] Session persistence and history
+### ✅ **Phase 3: MCP Integration** (COMPLETED)
+- [x] TeachingAgent class with session management
+- [x] MCP server with 4 teaching tools
+- [x] MCPClientWrapper for Gradio integration
+- [x] Automatic MCP client initialization in app
+- [x] Full tool schemas in mcp_config.json
+- [x] MCP setup documentation
+- [x] Claude Desktop compatibility
+- [x] Cursor IDE compatibility
+- [x] Enhanced analysis panel with MCP data
+
+### 🔮 **Phase 4: Advanced Features** (Future)
+- [ ] Session persistence and history (database storage)
 - [ ] Progress tracking across sessions
 - [ ] Knowledge graph visualization
 - [ ] Spaced repetition system
 - [ ] Multi-user leaderboards
 - [ ] Export to flashcards (Anki)
-- [ ] MCP server for tool orchestration
+- [ ] Voice input (speak explanations)
 
 ---
 
@@ -271,6 +392,7 @@ teachback-ai/
 
 ### Important Notes
 - **Model**: Uses `claude-3-opus-20240229` - ensure your API key has access
+- **MCP**: Automatically starts when app launches - no manual setup needed
 - **Port**: Configured for port 7860 (Gradio default)
 - **Voice**: Works without ElevenLabs key, just disables voice mode
 - **State Management**: Uses `gr.State()` for proper multi-user support
@@ -319,10 +441,11 @@ MIT License - See LICENSE file for details
 
 ## 🙏 Acknowledgments
 
-- **Anthropic** - For Claude API and MCP protocol
+- **Anthropic** - For Claude API and the Model Context Protocol (MCP)
 - **Gradio** - For the amazing UI framework
 - **ElevenLabs** - For natural voice synthesis
 - **Hugging Face** - For hosting infrastructure
+- **MCP Community** - For the open protocol enabling tool orchestration
 - **MCP Hackathon** - For the opportunity and API credits
 
 ---

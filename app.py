@@ -5,13 +5,36 @@ Main Gradio Application
 
 import gradio as gr
 import os
+import atexit
 from dotenv import load_dotenv
 from typing import Optional, Dict, List, Tuple
-from src.utils.claude_client import generate_ai_student_response, analyze_explanation_with_claude
+from src.mcp.client_wrapper import MCPClientWrapper
 from src.utils.elevenlabs_client import text_to_speech_file
 
 # Load environment variables
 load_dotenv()
+
+# Initialize MCP Client
+mcp_client = None
+try:
+    mcp_client = MCPClientWrapper(timeout=60)  # Increased to 60 seconds for Claude API calls
+    print("✅ MCP Client initialized successfully")
+except Exception as e:
+    print(f"⚠️ Failed to initialize MCP Client: {e}")
+    print("The app will attempt to connect when needed.")
+
+# Register cleanup on exit
+def cleanup_mcp():
+    """Cleanup MCP client on app shutdown"""
+    global mcp_client
+    if mcp_client:
+        try:
+            mcp_client.cleanup()
+            print("✅ MCP Client cleaned up")
+        except Exception as e:
+            print(f"Warning: MCP cleanup error: {e}")
+
+atexit.register(cleanup_mcp)
 
 # AI Student Personalities
 STUDENT_MODES = {
@@ -24,6 +47,8 @@ STUDENT_MODES = {
 def create_initial_state():
     """Create initial session state"""
     return {
+        "session_id": None,
+        "user_id": "default_user",
         "topic": None,
         "mode": None,
         "voice_enabled": False,
@@ -32,12 +57,15 @@ def create_initial_state():
         "conversation_history": [],
         "knowledge_gaps": [],
         "confidence_score": 0,
-        "clarity_score": 0
+        "clarity_score": 0,
+        "last_analysis": None
     }
 
 
 def start_teaching_session(topic: str, mode: str, voice_enabled: bool, state: Dict) -> Tuple[str, str, str, int, int, Dict]:
-    """Initialize a new teaching session"""
+    """Initialize a new teaching session using MCP"""
+    global mcp_client
+
     if not topic or not topic.strip():
         return "⚠️ Please enter a topic to teach!", "", get_analysis_panel(state), 0, 0, state
 
@@ -47,28 +75,62 @@ def start_teaching_session(topic: str, mode: str, voice_enabled: bool, state: Di
     state["mode"] = mode
     state["voice_enabled"] = voice_enabled
 
-    # Generate initial question based on mode
-    initial_questions = {
-        "🤔 Socratic Student": f"I'm interested in learning about {topic}. What's the core idea behind it, and why should I care?",
-        "😈 Contrarian Student": f"Okay, {topic}... I've heard it's overrated. Why should I believe it's actually important?",
-        "👶 Five-Year-Old Student": f"What's {topic}? Can you explain it like I'm five?",
-        "😰 Anxious Student": f"I'm worried about learning {topic}... What if I don't understand it? Where do I even start?"
-    }
+    try:
+        # Convert mode to MCP format (remove emoji prefix)
+        mode_map = {
+            "🤔 Socratic Student": "socratic",
+            "😈 Contrarian Student": "contrarian",
+            "👶 Five-Year-Old Student": "five-year-old",
+            "😰 Anxious Student": "anxious"
+        }
+        mcp_mode = mode_map.get(mode, "socratic")
 
-    initial_question = initial_questions.get(mode, f"Tell me about {topic}. What is it?")
-    state["conversation_history"].append({"role": "student", "content": initial_question})
+        # Call MCP to create session
+        if not mcp_client:
+            mcp_client = MCPClientWrapper(timeout=60)
 
-    status_msg = f"✅ Session started! Teaching: **{topic}** | Mode: **{mode}**"
+        result = mcp_client.create_teaching_session(
+            user_id=state["user_id"],
+            topic=topic,
+            mode=mcp_mode
+        )
 
-    return status_msg, initial_question, get_analysis_panel(state), 0, 0, state
+        # Store session ID and welcome message
+        state["session_id"] = result["session_id"]
+        initial_question = result["welcome_message"]
+
+        state["conversation_history"].append({"role": "student", "content": initial_question})
+
+        status_msg = f"✅ Session started via MCP! Teaching: **{topic}** | Mode: **{mode}** | Session ID: `{state['session_id'][:8]}...`"
+
+        return status_msg, initial_question, get_analysis_panel(state), 0, 0, state
+
+    except Exception as e:
+        # Fallback to local session if MCP fails
+        error_msg = f"⚠️ MCP connection issue: {str(e)}\nStarting local session..."
+        print(f"MCP Error: {e}")
+
+        # Generate fallback initial question
+        initial_questions = {
+            "🤔 Socratic Student": f"I'm interested in learning about {topic}. What's the core idea behind it, and why should I care?",
+            "😈 Contrarian Student": f"Okay, {topic}... I've heard it's overrated. Why should I believe it's actually important?",
+            "👶 Five-Year-Old Student": f"What's {topic}? Can you explain it like I'm five?",
+            "😰 Anxious Student": f"I'm worried about learning {topic}... What if I don't understand it? Where do I even start?"
+        }
+        initial_question = initial_questions.get(mode, f"Tell me about {topic}. What is it?")
+        state["conversation_history"].append({"role": "student", "content": initial_question})
+
+        return error_msg, initial_question, get_analysis_panel(state), 0, 0, state
 
 
 def submit_explanation(explanation: str, state: Dict) -> Tuple[str, Optional[str], str, int, int, str, Dict]:
-    """Process user's explanation and generate AI student response"""
+    """Process user's explanation and generate AI student response using MCP"""
+    global mcp_client
+
     if not explanation or not explanation.strip():
         return "⚠️ Please provide an explanation!", None, get_analysis_panel(state), state["confidence_score"], state["clarity_score"], explanation, state
 
-    if not state["topic"]:
+    if not state["topic"] or not state.get("session_id"):
         return "⚠️ Please start a teaching session first!", None, get_analysis_panel(state), 0, 0, explanation, state
 
     # Increment turn count
@@ -77,38 +139,72 @@ def submit_explanation(explanation: str, state: Dict) -> Tuple[str, Optional[str
     # Add user explanation to history
     state["conversation_history"].append({"role": "teacher", "content": explanation})
 
-    # Generate student response using Claude API
-    student_response = generate_ai_student_response(
-        topic=state["topic"],
-        mode=state["mode"],
-        conversation_history=state["conversation_history"],
-        turn_count=state["turn_count"]
-    )
+    try:
+        # Convert mode to MCP format
+        mode_map = {
+            "🤔 Socratic Student": "socratic",
+            "😈 Contrarian Student": "contrarian",
+            "👶 Five-Year-Old Student": "five-year-old",
+            "😰 Anxious Student": "anxious"
+        }
+        mcp_mode = mode_map.get(state["mode"], "socratic")
 
-    # Add student response to history
-    state["conversation_history"].append({"role": "student", "content": student_response})
+        # Step 1: Analyze explanation using MCP
+        if not mcp_client:
+            mcp_client = MCPClientWrapper(timeout=60)
 
-    # Analyze explanation
-    state = analyze_user_explanation(explanation, state)
+        analysis = mcp_client.analyze_explanation(
+            session_id=state["session_id"],
+            explanation=explanation
+        )
 
-    # Generate voice response if enabled
-    audio_path = None
-    if state["voice_enabled"]:
-        try:
-            audio_path = text_to_speech_file(
-                text=student_response,
-                mode=state["mode"],
-                output_filename=f"response_{state['turn_count']}.mp3"
-            )
-        except Exception as e:
-            print(f"Voice generation error: {e}")
-            # Continue without voice if error occurs
+        # Update state with analysis results
+        state["confidence_score"] = int(analysis["confidence_score"] * 100)  # Convert 0-1 to 0-100
+        state["clarity_score"] = int(analysis["clarity_score"] * 100)
+        state["last_analysis"] = analysis
 
-    # Check if session should end
-    if state["turn_count"] >= state["max_turns"]:
-        student_response += f"\n\n---\n**Session complete!** You've completed {state['turn_count']} turns. Great teaching!"
+        # Update knowledge gaps (avoid duplicates)
+        for gap in analysis.get("knowledge_gaps", []):
+            if gap not in state["knowledge_gaps"]:
+                state["knowledge_gaps"].append(gap)
 
-    return student_response, audio_path, get_analysis_panel(state), state["confidence_score"], state["clarity_score"], "", state
+        # Step 2: Generate student question using MCP
+        student_response = mcp_client.generate_question(
+            session_id=state["session_id"],
+            explanation=explanation,
+            analysis=analysis,
+            mode=mcp_mode
+        )
+
+        # Add student response to history
+        state["conversation_history"].append({"role": "student", "content": student_response})
+
+        # Generate voice response if enabled
+        audio_path = None
+        if state["voice_enabled"]:
+            try:
+                audio_path = text_to_speech_file(
+                    text=student_response,
+                    mode=state["mode"],
+                    output_filename=f"response_{state['turn_count']}.mp3"
+                )
+            except Exception as e:
+                print(f"Voice generation error: {e}")
+                # Continue without voice if error occurs
+
+        # Check if session should end
+        if state["turn_count"] >= state["max_turns"]:
+            student_response += f"\n\n---\n**Session complete!** You've completed {state['turn_count']} turns. Great teaching!"
+
+        return student_response, audio_path, get_analysis_panel(state), state["confidence_score"], state["clarity_score"], "", state
+
+    except Exception as e:
+        # Fallback error handling
+        error_msg = f"⚠️ Error processing via MCP: {str(e)}\n\nPlease try again or restart the session."
+        print(f"MCP Error in submit_explanation: {e}")
+
+        # Return error without updating state much
+        return error_msg, None, get_analysis_panel(state), state["confidence_score"], state["clarity_score"], explanation, state
 
 
 def generate_student_response_fallback(explanation: str, mode: str) -> str:
@@ -122,56 +218,34 @@ def generate_student_response_fallback(explanation: str, mode: str) -> str:
     return responses.get(mode, "Can you explain that in more detail?")
 
 
-def analyze_user_explanation(explanation: str, state: Dict) -> Dict:
-    """Analyze user's explanation using Claude API for confidence, clarity, and knowledge gaps"""
-    try:
-        # Use Claude API for real analysis
-        analysis = analyze_explanation_with_claude(
-            topic=state["topic"],
-            explanation=explanation,
-            conversation_history=state["conversation_history"]
-        )
-
-        # Update state with Claude's analysis
-        state["confidence_score"] = analysis["confidence_score"]
-        state["clarity_score"] = analysis["clarity_score"]
-
-        # Add new knowledge gaps (avoid duplicates)
-        for gap in analysis["knowledge_gaps"]:
-            if gap not in state["knowledge_gaps"]:
-                state["knowledge_gaps"].append(gap)
-
-        return state
-
-    except Exception as e:
-        # Fallback to simple analysis if Claude API fails
-        print(f"Analysis error: {e}")
-        import random
-
-        # Simple score updates
-        state["confidence_score"] = min(100, state["confidence_score"] + random.randint(5, 15))
-        state["clarity_score"] = min(100, state["clarity_score"] + random.randint(5, 15))
-
-        # Detect hedging language
-        hedging_words = ["i think", "maybe", "probably", "kind of", "sort of", "i guess"]
-        if any(word in explanation.lower() for word in hedging_words):
-            state["confidence_score"] = max(0, state["confidence_score"] - 10)
-
-        return state
-
-
 def get_analysis_panel(state: Dict) -> str:
-    """Generate the analysis panel as markdown"""
+    """Generate the analysis panel as markdown with MCP analysis details"""
     gaps = state.get("knowledge_gaps", [])
     turn = state.get("turn_count", 0)
     max_turn = state.get("max_turns", 10)
+    last_analysis = state.get("last_analysis")
 
     # Format knowledge gaps
     gaps_text = "\n".join([f"• {gap}" for gap in gaps]) if gaps else "None detected yet"
 
+    # Add detailed analysis if available
+    detailed_analysis = ""
+    if last_analysis:
+        unexplained = last_analysis.get("unexplained_jargon", [])
+        strengths = last_analysis.get("strengths", [])
+
+        if unexplained:
+            detailed_analysis += "\n\n### ⚠️ Unexplained Jargon:\n"
+            detailed_analysis += "\n".join([f"• {term}" for term in unexplained])
+
+        if strengths:
+            detailed_analysis += "\n\n### ✅ Strengths:\n"
+            detailed_analysis += "\n".join([f"• {strength}" for strength in strengths])
+
     analysis_md = f"""
 ### 🎯 Knowledge Gaps Found:
 {gaps_text}
+{detailed_analysis}
 
 ---
 
@@ -269,13 +343,22 @@ with gr.Blocks(css=custom_css, title="🎓 TeachBack AI", theme=gr.themes.Soft()
     with gr.Row(equal_height=False):
         # LEFT COLUMN - Sidebar
         with gr.Column(scale=1, min_width=250, elem_classes="sidebar"):
-            gr.Markdown("""
+            mcp_status_icon = "🟢" if mcp_client else "🔴"
+            mcp_status_text = "MCP Connected" if mcp_client else "MCP Offline"
+            gr.Markdown(f"""
 ## 📚 Navigation
 
 **Dashboard** ← You are here
 My Sessions
 Progress
 Settings
+
+---
+
+## 🔌 System Status
+
+{mcp_status_icon} **{mcp_status_text}**
+Using MCP Server for AI
 
 ---
 
@@ -366,10 +449,12 @@ Student
                     )
 
     # Footer
-    gr.Markdown("""
+    mcp_status = "🟢 MCP Server Active" if mcp_client else "🔴 MCP Server Offline"
+    gr.Markdown(f"""
 ---
 **Built for MCP's 1st Birthday Hackathon** | Track: MCP in Action - Consumer
-Powered by Anthropic Claude, Gradio, MCP & ElevenLabs
+
+{mcp_status} | Powered by Anthropic Claude, Gradio, MCP & ElevenLabs
 
 [LinkedIn](https://www.linkedin.com/in/rodrick-mpofu/) | [GitHub](https://github.com/rodrick-mpofu)
     """)

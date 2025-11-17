@@ -1,0 +1,307 @@
+{
+  "mcpServers": {
+    "teachback-ai": {
+      "name": "teachback-ai",
+      "version": "1.0.0",
+      "description": "Teaching-based learning with AI student personalities - helps users master concepts by forcing them to teach",
+      "author": {
+        "name": "Rodrick Mpofu",
+        "url": "https://www.linkedin.com/in/rodrick-mpofu/"
+      },
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/rodrick-mpofu/teachback-ai"
+      },
+      "license": "MIT",
+      "command": "python",
+      "args": ["mcp_server.py"],
+      "transport": "stdio",
+      "capabilities": {
+        "tools": true,
+        "session_management": true,
+        "stateful_sessions": true
+      },
+      "tools": [
+        {
+          "name": "create_teaching_session",
+          "description": "Create a new teaching practice session with specified topic and AI student personality",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "description": "Unique identifier for the user creating the session"
+              },
+              "topic": {
+                "type": "string",
+                "description": "The topic to be taught (e.g., 'Recursion in Python', 'Photosynthesis', 'Blockchain')"
+              },
+              "mode": {
+                "type": "string",
+                "enum": ["socratic", "contrarian", "five-year-old", "anxious"],
+                "description": "AI student personality mode: 'socratic' (asks probing questions), 'contrarian' (challenges claims), 'five-year-old' (demands simple explanations), 'anxious' (worries about edge cases)"
+              }
+            },
+            "required": ["user_id", "topic", "mode"]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "session_id": {
+                "type": "string",
+                "description": "Unique identifier for the created session"
+              },
+              "welcome_message": {
+                "type": "string",
+                "description": "Initial greeting from the AI student based on their personality mode"
+              }
+            },
+            "required": ["session_id", "welcome_message"]
+          }
+        },
+        {
+          "name": "analyze_explanation",
+          "description": "Analyze the quality of a teaching explanation and detect knowledge gaps",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "session_id": {
+                "type": "string",
+                "description": "The session identifier from create_teaching_session"
+              },
+              "explanation": {
+                "type": "string",
+                "description": "The user's explanation text to be analyzed"
+              }
+            },
+            "required": ["session_id", "explanation"]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "confidence_score": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Confidence level of the explanation (0 = very uncertain, 1 = very confident)"
+              },
+              "clarity_score": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Clarity and structure of the explanation (0 = confusing, 1 = crystal clear)"
+              },
+              "knowledge_gaps": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of identified knowledge gaps or areas of incomplete understanding"
+              },
+              "unexplained_jargon": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Technical terms used without proper definition or context"
+              },
+              "strengths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Strong points and well-explained aspects of the explanation"
+              }
+            },
+            "required": ["confidence_score", "clarity_score", "knowledge_gaps", "unexplained_jargon", "strengths"]
+          }
+        },
+        {
+          "name": "generate_question",
+          "description": "Generate next question from AI student based on their personality mode",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "session_id": {
+                "type": "string",
+                "description": "The session identifier"
+              },
+              "explanation": {
+                "type": "string",
+                "description": "The user's latest explanation"
+              },
+              "analysis": {
+                "type": "object",
+                "description": "Analysis results from analyze_explanation tool",
+                "properties": {
+                  "confidence_score": {
+                    "type": "number",
+                    "description": "Confidence score from analysis"
+                  },
+                  "clarity_score": {
+                    "type": "number",
+                    "description": "Clarity score from analysis"
+                  },
+                  "knowledge_gaps": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Knowledge gaps from analysis"
+                  },
+                  "unexplained_jargon": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Unexplained jargon from analysis"
+                  },
+                  "strengths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Strengths from analysis"
+                  }
+                },
+                "required": ["confidence_score", "clarity_score", "knowledge_gaps", "unexplained_jargon", "strengths"]
+              },
+              "mode": {
+                "type": "string",
+                "enum": ["socratic", "contrarian", "five-year-old", "anxious"],
+                "description": "AI student personality mode"
+              }
+            },
+            "required": ["session_id", "explanation", "analysis", "mode"]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "question": {
+                "type": "string",
+                "description": "The AI student's next question tailored to their personality mode"
+              }
+            },
+            "required": ["question"]
+          }
+        },
+        {
+          "name": "get_session_summary",
+          "description": "Get comprehensive summary and analytics for a teaching session",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "session_id": {
+                "type": "string",
+                "description": "The session identifier"
+              }
+            },
+            "required": ["session_id"]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "topic": {
+                "type": "string",
+                "description": "The topic being taught in this session"
+              },
+              "mode": {
+                "type": "string",
+                "description": "The AI student personality mode used"
+              },
+              "total_turns": {
+                "type": "integer",
+                "description": "Number of teaching turns completed"
+              },
+              "average_confidence": {
+                "type": "number",
+                "description": "Mean confidence score across all turns"
+              },
+              "average_clarity": {
+                "type": "number",
+                "description": "Mean clarity score across all turns"
+              },
+              "persistent_gaps": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Knowledge gaps that appeared in multiple analyses"
+              },
+              "conversation_history": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "explanation": {
+                      "type": "string"
+                    },
+                    "analysis": {
+                      "type": "object"
+                    },
+                    "question": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "Full conversation history with explanations, analyses, and questions"
+              }
+            },
+            "required": ["topic", "mode", "total_turns", "average_confidence", "average_clarity", "persistent_gaps", "conversation_history"]
+          }
+        }
+      ],
+      "features": {
+        "ai_students": {
+          "socratic": {
+            "name": "Socratic Student",
+            "description": "Asks probing 'why?' questions to expose gaps in understanding",
+            "personality": "Patient and thoughtful, guides toward deeper understanding"
+          },
+          "contrarian": {
+            "name": "Contrarian Student",
+            "description": "Challenges every claim with counterarguments",
+            "personality": "Skeptical and provocative, plays devil's advocate"
+          },
+          "five-year-old": {
+            "name": "Five-Year-Old Student",
+            "description": "Asks 'why?' repeatedly until explanations are simple",
+            "personality": "Innocent and literal, forces clear explanations"
+          },
+          "anxious": {
+            "name": "Anxious Student",
+            "description": "Worries about edge cases and failure scenarios",
+            "personality": "Concerned and detail-oriented about safety"
+          }
+        },
+        "powered_by": {
+          "llm": "Anthropic Claude 3 Opus (claude-3-opus-20240229)",
+          "voice": "ElevenLabs Text-to-Speech (optional)",
+          "protocol": "Model Context Protocol (MCP)"
+        }
+      },
+      "usage_example": {
+        "workflow": [
+          "1. Call create_teaching_session to start a session with a topic and AI student mode",
+          "2. Receive welcome message from AI student",
+          "3. User provides explanation",
+          "4. Call analyze_explanation to get feedback on explanation quality",
+          "5. Call generate_question with analysis results to get next question from AI student",
+          "6. Repeat steps 3-5 for interactive teaching practice",
+          "7. Call get_session_summary to review progress and persistent knowledge gaps"
+        ],
+        "sample_session": {
+          "topic": "Binary Search Trees",
+          "mode": "socratic",
+          "turns": 5,
+          "outcome": "Identified gaps in explaining tree balancing and Big-O complexity"
+        }
+      },
+      "hackathon": {
+        "event": "MCP's 1st Birthday Hackathon",
+        "track": "MCP in Action - Consumer",
+        "theme": "Learn by Teaching, Not Faking"
+      }
+    }
+  }
+}
