@@ -13,8 +13,10 @@ from src.ui import (
     create_main_layout,
     start_teaching_session,
     submit_explanation,
-    update_mode_description
+    update_mode_description,
+    create_advanced_features_interface
 )
+from src.ui.components import create_footer
 
 # Load environment variables
 load_dotenv()
@@ -45,48 +47,58 @@ atexit.register(cleanup_mcp)
 # Build Gradio Interface
 with gr.Blocks(css=CUSTOM_CSS, title="🎓 TeachBack AI", theme='shivi/calm_seafoam') as app:
 
-    # Create all UI components and get references
-    (
-        topic_input,
-        mode_dropdown,
-        mode_description,
-        voice_checkbox,
-        start_button,
-        session_status,
-        explanation_input,
-        submit_button,
-        student_response_output,
-        audio_output,
-        confidence_slider,
-        clarity_slider,
-        analysis_output,
-        session_state_component
-    ) = create_main_layout(mcp_client)
+    # Create tabbed interface
+    with gr.Tabs() as tabs:
+        # Main Teaching Tab
+        with gr.Tab("🎓 Teach"):
+            # Create all UI components and get references
+            (
+                topic_input,
+                mode_dropdown,
+                mode_description,
+                voice_checkbox,
+                start_button,
+                session_status,
+                explanation_input,
+                submit_button,
+                student_response_output,
+                audio_output,
+                confidence_slider,
+                clarity_slider,
+                analysis_output,
+                session_state_component
+            ) = create_main_layout(mcp_client)
 
-    # Event Handlers
-    mode_dropdown.change(
-        fn=update_mode_description,
-        inputs=[mode_dropdown],
-        outputs=[mode_description]
-    )
+            # Event Handlers for main teaching tab
+            mode_dropdown.change(
+                fn=update_mode_description,
+                inputs=[mode_dropdown],
+                outputs=[mode_description]
+            )
 
-    start_button.click(
-        fn=lambda topic, mode, voice, state: start_teaching_session(topic, mode, voice, state, mcp_client),
-        inputs=[topic_input, mode_dropdown, voice_checkbox, session_state_component],
-        outputs=[session_status, student_response_output, analysis_output, confidence_slider, clarity_slider, session_state_component]
-    )
+            start_button.click(
+                fn=lambda topic, mode, voice, state: start_teaching_session(topic, mode, voice, state, mcp_client),
+                inputs=[topic_input, mode_dropdown, voice_checkbox, session_state_component],
+                outputs=[session_status, student_response_output, analysis_output, confidence_slider, clarity_slider, session_state_component]
+            )
 
-    submit_button.click(
-        fn=lambda explanation, state: submit_explanation(explanation, state, mcp_client),
-        inputs=[explanation_input, session_state_component],
-        outputs=[student_response_output, audio_output, analysis_output, confidence_slider, clarity_slider, explanation_input, session_state_component]
-    )
+            submit_button.click(
+                fn=lambda explanation, state: submit_explanation(explanation, state, mcp_client),
+                inputs=[explanation_input, session_state_component],
+                outputs=[student_response_output, audio_output, analysis_output, confidence_slider, clarity_slider, explanation_input, session_state_component]
+            )
 
-    explanation_input.submit(
-        fn=lambda explanation, state: submit_explanation(explanation, state, mcp_client),
-        inputs=[explanation_input, session_state_component],
-        outputs=[student_response_output, audio_output, analysis_output, confidence_slider, clarity_slider, explanation_input, session_state_component]
-    )
+            explanation_input.submit(
+                fn=lambda explanation, state: submit_explanation(explanation, state, mcp_client),
+                inputs=[explanation_input, session_state_component],
+                outputs=[student_response_output, audio_output, analysis_output, confidence_slider, clarity_slider, explanation_input, session_state_component]
+            )
+
+        # Advanced Features Tabs
+        create_advanced_features_interface(default_user_id="default_user")
+
+    # Footer at the bottom of the entire page
+    create_footer(mcp_client)
 
 
 # Launch the app

@@ -129,9 +129,6 @@ def create_main_layout(mcp_client) -> Tuple:
                 # Analysis Panel
                 confidence_slider, clarity_slider, analysis_output = create_analysis_panel_layout()
 
-    # Footer
-    create_footer(mcp_client)
-
     # Session State
     session_state_component = gr.State(create_initial_state())
 

@@ -6,7 +6,39 @@ Event handling functions for UI interactions
 from typing import Optional, Dict, Tuple
 from src.mcp.client_wrapper import MCPClientWrapper
 from src.utils.elevenlabs_client import text_to_speech_file
+from src.database.db_manager import DatabaseManager
+from src.services.knowledge_graph import KnowledgeGraphService
+from src.services.spaced_repetition import SpacedRepetitionService
 from .components import get_analysis_panel, create_initial_state, STUDENT_MODES
+
+# Initialize database and services (singleton pattern)
+_db_manager = None
+_kg_service = None
+_sr_service = None
+
+
+def get_db_manager():
+    """Get or create database manager singleton"""
+    global _db_manager
+    if _db_manager is None:
+        _db_manager = DatabaseManager("teachback.db")
+    return _db_manager
+
+
+def get_kg_service():
+    """Get or create knowledge graph service singleton"""
+    global _kg_service
+    if _kg_service is None:
+        _kg_service = KnowledgeGraphService()
+    return _kg_service
+
+
+def get_sr_service():
+    """Get or create spaced repetition service singleton"""
+    global _sr_service
+    if _sr_service is None:
+        _sr_service = SpacedRepetitionService(get_db_manager())
+    return _sr_service
 
 
 def start_teaching_session(
@@ -52,6 +84,31 @@ def start_teaching_session(
         initial_question = result["welcome_message"]
 
         state["conversation_history"].append({"role": "student", "content": initial_question})
+
+        # Save to database
+        try:
+            db = get_db_manager()
+            # Ensure user exists
+            db.get_or_create_user(state["user_id"], "default_user")
+            # Create session in database
+            db.create_session(
+                session_id=state["session_id"],
+                user_id=state["user_id"],
+                topic=topic,
+                mode=mcp_mode,
+                voice_enabled=voice_enabled,
+                max_turns=state["max_turns"]
+            )
+            # Add initial conversation
+            db.add_conversation_turn(
+                session_id=state["session_id"],
+                turn_number=0,
+                role="student",
+                content=initial_question
+            )
+        except Exception as db_error:
+            print(f"Database error: {db_error}")
+            # Continue even if database fails
 
         status_msg = f"✅ Session started via MCP! Teaching: **{topic}** | Mode: **{mode}** | Session ID: `{state['session_id'][:8]}...`"
 
@@ -134,6 +191,80 @@ def submit_explanation(
         # Add student response to history
         state["conversation_history"].append({"role": "student", "content": student_response})
 
+        # Save to database
+        try:
+            db = get_db_manager()
+
+            # Save conversation turns
+            db.add_conversation_turn(
+                session_id=state["session_id"],
+                turn_number=state["turn_count"],
+                role="teacher",
+                content=explanation
+            )
+            db.add_conversation_turn(
+                session_id=state["session_id"],
+                turn_number=state["turn_count"],
+                role="student",
+                content=student_response
+            )
+
+            # Save analysis
+            db.add_analysis(
+                session_id=state["session_id"],
+                turn_number=state["turn_count"],
+                confidence_score=analysis["confidence_score"],
+                clarity_score=analysis["clarity_score"],
+                knowledge_gaps=analysis.get("knowledge_gaps", []),
+                unexplained_jargon=analysis.get("unexplained_jargon", []),
+                strengths=analysis.get("strengths", [])
+            )
+
+            # Update session metrics
+            db.update_session_metrics(
+                session_id=state["session_id"],
+                turn_count=state["turn_count"],
+                average_confidence=state["confidence_score"] / 100,
+                average_clarity=state["clarity_score"] / 100
+            )
+
+            # Update knowledge graph
+            kg_service = get_kg_service()
+            related_concepts = kg_service.extract_related_concepts(
+                state["topic"],
+                state["conversation_history"]
+            )
+
+            db.create_or_update_knowledge_node(
+                user_id=state["user_id"],
+                topic=state["topic"],
+                confidence=state["confidence_score"] / 100,
+                clarity=state["clarity_score"] / 100,
+                related_concepts=related_concepts,
+                gaps=analysis.get("knowledge_gaps", [])
+            )
+
+            # Create edges for related concepts
+            for related in related_concepts:
+                db.create_or_update_knowledge_node(
+                    user_id=state["user_id"],
+                    topic=related,
+                    confidence=0.5,
+                    clarity=0.5,
+                    related_concepts=[state["topic"]],
+                    gaps=[]
+                )
+                db.create_knowledge_edge(
+                    from_topic=state["topic"],
+                    to_topic=related,
+                    user_id=state["user_id"],
+                    relationship_type="related_to"
+                )
+
+        except Exception as db_error:
+            print(f"Database error: {db_error}")
+            # Continue even if database fails
+
         # Generate voice response if enabled
         audio_path = None
         if state["voice_enabled"]:
@@ -150,6 +281,30 @@ def submit_explanation(
         # Check if session should end
         if state["turn_count"] >= state["max_turns"]:
             student_response += f"\n\n---\n**Session complete!** You've completed {state['turn_count']} turns. Great teaching!"
+
+            # Mark session as complete and update spaced repetition
+            try:
+                db = get_db_manager()
+                db.complete_session(
+                    session_id=state["session_id"],
+                    final_confidence=state["confidence_score"] / 100,
+                    final_clarity=state["clarity_score"] / 100
+                )
+
+                # Update progress metrics
+                db.update_progress_metrics(state["user_id"])
+
+                # Auto-create spaced repetition review
+                sr_service = get_sr_service()
+                sr_service.auto_create_review_from_session(
+                    user_id=state["user_id"],
+                    topic=state["topic"],
+                    confidence=state["confidence_score"] / 100,
+                    clarity=state["clarity_score"] / 100,
+                    knowledge_gaps=state["knowledge_gaps"]
+                )
+            except Exception as db_error:
+                print(f"Session completion error: {db_error}")
 
         return student_response, audio_path, get_analysis_panel(state), state["confidence_score"], state["clarity_score"], "", state
 

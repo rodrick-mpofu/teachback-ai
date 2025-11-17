@@ -19,6 +19,8 @@ from .handlers import (
     update_mode_description
 )
 
+from .advanced_layouts import create_advanced_features_interface
+
 __all__ = [
     'STUDENT_MODES',
     'create_initial_state',
@@ -28,5 +30,6 @@ __all__ = [
     'create_main_layout',
     'start_teaching_session',
     'submit_explanation',
-    'update_mode_description'
+    'update_mode_description',
+    'create_advanced_features_interface'
 ]

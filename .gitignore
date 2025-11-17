@@ -3,3 +3,12 @@ venv/
 __pycache__/
 *.pyc
 .DS_Store
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# Audio files
+*.mp3
+*.wav

@@ -24,3 +24,9 @@ python-multipart>=0.0.6
 
 # Type Hints & Utilities
 typing-extensions>=4.8.0
+
+# Database & ORM
+sqlalchemy>=2.0.0
+
+# Date/Time utilities (included in Python standard library, but listed for clarity)
+# python-dateutil>=2.8.0  # Optional, if needed for advanced date operations
