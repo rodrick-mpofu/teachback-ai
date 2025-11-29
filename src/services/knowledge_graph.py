@@ -17,7 +17,7 @@ class KnowledgeGraphService:
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if api_key:
             self.client = Anthropic(api_key=api_key)
-            self.model = "claude-3-5-sonnet-20241022"
+            self.model = "claude-sonnet-4-5-20250929"
         else:
             self.client = None
 
@@ -56,6 +56,7 @@ Related concepts:"""
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=256,
+                timeout=10.0,  # Add 10 second timeout to prevent hanging
                 messages=[{
                     "role": "user",
                     "content": prompt
@@ -70,7 +71,8 @@ Related concepts:"""
             return related[:5]  # Max 5 concepts
 
         except Exception as e:
-            print(f"Error extracting related concepts: {e}")
+            print(f"[WARNING] Error extracting related concepts: {e}")
+            # Return empty list on error or timeout - don't block the flow
             return []
 
     def generate_graph_html(self, graph_data: Dict) -> str:

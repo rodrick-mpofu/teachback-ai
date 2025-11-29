@@ -3,6 +3,7 @@ TeachBack AI - Event Handlers
 Event handling functions for UI interactions
 """
 
+import os
 from typing import Optional, Dict, Tuple
 from src.mcp.client_wrapper import MCPClientWrapper
 from src.utils.elevenlabs_client import text_to_speech_file
@@ -41,6 +42,11 @@ def get_sr_service():
     return _sr_service
 
 
+def is_modal_enabled():
+    """Check if Modal is enabled via environment variable"""
+    return os.environ.get("USE_MODAL", "false").lower() == "true"
+
+
 def start_teaching_session(
     topic: str,
     mode: str,
@@ -71,7 +77,7 @@ def start_teaching_session(
 
         # Call MCP to create session
         if not mcp_client:
-            mcp_client = MCPClientWrapper(timeout=60)
+            mcp_client = MCPClientWrapper(timeout=120)
 
         result = mcp_client.create_teaching_session(
             user_id=state["user_id"],
@@ -163,7 +169,7 @@ def submit_explanation(
 
         # Step 1: Analyze explanation using MCP
         if not mcp_client:
-            mcp_client = MCPClientWrapper(timeout=60)
+            mcp_client = MCPClientWrapper(timeout=120)
 
         analysis = mcp_client.analyze_explanation(
             session_id=state["session_id"],
@@ -174,6 +180,11 @@ def submit_explanation(
         state["confidence_score"] = int(analysis["confidence_score"] * 100)  # Convert 0-1 to 0-100
         state["clarity_score"] = int(analysis["clarity_score"] * 100)
         state["last_analysis"] = analysis
+
+        # Track all analyses for Modal background analytics
+        if "all_analyses" not in state:
+            state["all_analyses"] = []
+        state["all_analyses"].append(analysis)
 
         # Update knowledge gaps (avoid duplicates)
         for gap in analysis.get("knowledge_gaps", []):
@@ -190,6 +201,31 @@ def submit_explanation(
 
         # Add student response to history
         state["conversation_history"].append({"role": "student", "content": student_response})
+
+        # Trigger background analytics every 5 interactions if Modal is enabled
+        if is_modal_enabled() and state["turn_count"] % 5 == 0:
+            try:
+                # Import the deployed Modal function directly
+                from src.agents.teaching_agent import compute_session_analytics, MODAL_AVAILABLE
+
+                if MODAL_AVAILABLE and compute_session_analytics:
+                    # Build session history with all analyses
+                    session_data = {
+                        "topic": state["topic"],
+                        "mode": mcp_mode,
+                        "conversation_history": state["conversation_history"],
+                        "analyses": state.get("all_analyses", [])
+                    }
+
+                    print(f"[ANALYTICS] Triggering background analytics computation (turn {state['turn_count']})...")
+                    print(f"[ANALYTICS] Session data: {len(session_data['analyses'])} analyses")
+                    call = compute_session_analytics.spawn(session_data)
+                    print(f"[ANALYTICS] Analytics task spawned (call_id: {call.object_id})")
+                    student_response = "\n[Computing analytics in background...]\n\n" + student_response
+                else:
+                    print("[INFO] Modal not available for background analytics")
+            except Exception as bg_error:
+                print(f"[WARNING] Background analytics error: {bg_error}")
 
         # Save to database
         try:
@@ -228,38 +264,45 @@ def submit_explanation(
                 average_clarity=state["clarity_score"] / 100
             )
 
-            # Update knowledge graph
-            kg_service = get_kg_service()
-            related_concepts = kg_service.extract_related_concepts(
-                state["topic"],
-                state["conversation_history"]
-            )
+            # Update knowledge graph (with timeout protection)
+            # TEMPORARILY DISABLED for debugging
+            try:
+                print("[DEBUG] Skipping knowledge graph extraction (temporarily disabled)")
+                related_concepts = []  # Skip KG extraction
+                # kg_service = get_kg_service()
+                # related_concepts = kg_service.extract_related_concepts(
+                #     state["topic"],
+                #     state["conversation_history"]
+                # )
 
-            db.create_or_update_knowledge_node(
-                user_id=state["user_id"],
-                topic=state["topic"],
-                confidence=state["confidence_score"] / 100,
-                clarity=state["clarity_score"] / 100,
-                related_concepts=related_concepts,
-                gaps=analysis.get("knowledge_gaps", [])
-            )
-
-            # Create edges for related concepts
-            for related in related_concepts:
                 db.create_or_update_knowledge_node(
                     user_id=state["user_id"],
-                    topic=related,
-                    confidence=0.5,
-                    clarity=0.5,
-                    related_concepts=[state["topic"]],
-                    gaps=[]
+                    topic=state["topic"],
+                    confidence=state["confidence_score"] / 100,
+                    clarity=state["clarity_score"] / 100,
+                    related_concepts=related_concepts,
+                    gaps=analysis.get("knowledge_gaps", [])
                 )
-                db.create_knowledge_edge(
-                    from_topic=state["topic"],
-                    to_topic=related,
-                    user_id=state["user_id"],
-                    relationship_type="related_to"
-                )
+
+                # Create edges for related concepts
+                for related in related_concepts:
+                    db.create_or_update_knowledge_node(
+                        user_id=state["user_id"],
+                        topic=related,
+                        confidence=0.5,
+                        clarity=0.5,
+                        related_concepts=[state["topic"]],
+                        gaps=[]
+                    )
+                    db.create_knowledge_edge(
+                        from_topic=state["topic"],
+                        to_topic=related,
+                        user_id=state["user_id"],
+                        relationship_type="related_to"
+                    )
+            except Exception as kg_error:
+                print(f"[WARNING] Knowledge graph update failed: {kg_error}")
+                # Continue without knowledge graph - don't block the conversation
 
         except Exception as db_error:
             print(f"Database error: {db_error}")

@@ -5,6 +5,7 @@ This module provides an MCP (Model Context Protocol) server that exposes
 the TeachingAgent functionality as tools for AI assistants and other MCP clients.
 """
 
+import os
 import logging
 import json
 from typing import Any, Dict
@@ -12,12 +13,43 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
+# Load environment variables BEFORE importing TeachingAgent
+from dotenv import load_dotenv
+load_dotenv()
+
+# Configure file logging to debug MCP server startup
+log_file = os.path.join(os.path.dirname(__file__), 'mcp_server_debug.log')
+file_handler = logging.FileHandler(log_file, mode='w')
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+
+# Verify Modal credentials are loaded
+logger_early = logging.getLogger("teachback-mcp-startup")
+logger_early.setLevel(logging.INFO)
+logger_early.addHandler(file_handler)
+
+# Also log to stderr
+stderr_handler = logging.StreamHandler()
+stderr_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+logger_early.addHandler(stderr_handler)
+
+modal_token_id = os.environ.get("MODAL_TOKEN_ID")
+modal_token_secret = os.environ.get("MODAL_TOKEN_SECRET")
+anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
+
+logger_early.info(f"MCP Server starting...")
+logger_early.info(f"  Working directory: {os.getcwd()}")
+logger_early.info(f"  MODAL_TOKEN_ID: {modal_token_id[:15] + '...' if modal_token_id else 'NOT SET'}")
+logger_early.info(f"  MODAL_TOKEN_SECRET: {'SET' if modal_token_secret else 'NOT SET'}")
+logger_early.info(f"  ANTHROPIC_API_KEY: {'SET' if anthropic_key else 'NOT SET'}")
+
 from src.agents.teaching_agent import TeachingAgent
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[file_handler, stderr_handler]  # Use the same handlers for all logging
 )
 logger = logging.getLogger("teachback-ai-mcp")
 
@@ -26,6 +58,12 @@ app = Server("teachback-ai")
 
 # Initialize the TeachingAgent
 try:
+    # Check Modal availability before initializing agent
+    from src.agents.teaching_agent import MODAL_AVAILABLE, analyze_explanation_modal, generate_question_modal
+    logger.info(f"Modal availability check: MODAL_AVAILABLE={MODAL_AVAILABLE}")
+    logger.info(f"  - analyze_explanation_modal: {analyze_explanation_modal}")
+    logger.info(f"  - generate_question_modal: {generate_question_modal}")
+
     agent = TeachingAgent()
     logger.info("TeachingAgent initialized successfully")
 except Exception as e:
