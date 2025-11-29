@@ -147,7 +147,7 @@ Remember to stay in character and ask questions that help the teacher improve th
 
         # Call Claude API
         response = client.messages.create(
-            model="claude-3-opus-20240229",
+            model="claude-sonnet-4-5-20250929",  # Faster than Opus
             max_tokens=300,
             temperature=0.7,
             system=full_system_prompt,
@@ -208,7 +208,7 @@ TEACHER'S EXPLANATION:
 {explanation}"""
 
         response = client.messages.create(
-            model="claude-3-opus-20240229",
+            model="claude-sonnet-4-5-20250929",  # Faster than Opus
             max_tokens=500,
             temperature=0.3,
             messages=[{"role": "user", "content": analysis_prompt}]

@@ -24,7 +24,7 @@ load_dotenv()
 # Initialize MCP Client
 mcp_client = None
 try:
-    mcp_client = MCPClientWrapper(timeout=60)  # Increased to 60 seconds for Claude API calls
+    mcp_client = MCPClientWrapper(timeout=300)  # Increased to 300 seconds for Claude API calls
     print("✅ MCP Client initialized successfully")
 except Exception as e:
     print(f"⚠️ Failed to initialize MCP Client: {e}")

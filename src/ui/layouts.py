@@ -3,6 +3,7 @@ TeachBack AI - UI Layouts
 Main layout definitions for the Gradio interface
 """
 
+import os
 import gradio as gr
 from typing import Dict, Tuple
 from .components import (
@@ -111,6 +112,11 @@ def create_main_layout(mcp_client) -> Tuple:
     """
     # Header
     create_header()
+
+    # Modal Status Indicator
+    use_modal = os.environ.get("USE_MODAL", "false").lower() == "true"
+    if use_modal:
+        gr.Markdown("⚡ **Powered by Modal — Parallel Execution Enabled**", elem_classes="modal-indicator")
 
     with gr.Row(equal_height=False):
         # LEFT COLUMN - Sidebar

@@ -29,7 +29,8 @@ def create_initial_state() -> Dict:
         "knowledge_gaps": [],
         "confidence_score": 0,
         "clarity_score": 0,
-        "last_analysis": None
+        "last_analysis": None,
+        "all_analyses": []  # Track all analyses for Modal background analytics
     }
 
 
